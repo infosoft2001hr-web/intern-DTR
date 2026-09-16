@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Take Photo — Intern DTR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f3f5f9;
+    --surface: #ffffff;
+    --ink: #1e293b;
+    --ink-soft: #64748b;
+    --border: #e2e8f0;
+    --primary: #0f172a;
+    --accent: #0d9488;
+    --accent-dark: #0f766e;
+    --danger: #dc2626;
+    --danger-bg: #fee2e2;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100%;
+  }
+  .wrap { max-width: 380px; margin: 0 auto; padding: 22px 16px; }
+  .hr-tag {
+    font-family: 'JetBrains Mono', 'Courier New', monospace; font-weight: 700;
+    font-size: 11px; letter-spacing: .08em; color: var(--ink-soft); text-transform: uppercase;
+    text-align: center; margin-bottom: 8px;
+  }
+  h1 { margin: 0 0 4px; font-size: 17px; text-align: center; }
+  p.sub { margin: 0 0 16px; font-size: 13px; color: var(--ink-soft); text-align: center; }
+  .cam-frame {
+    position: relative; width: 100%; aspect-ratio: 4/3; background: #0f172a;
+    border-radius: 10px; overflow: hidden; margin-bottom: 14px;
+  }
+  .cam-frame video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .cam-status { color: #cbd5e1; font-size: 13px; padding: 30px 14px; text-align: center; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border: none; border-radius: 10px; padding: 13px 18px; font-size: 14.5px; font-weight: 700;
+    cursor: pointer; font-family: inherit; width: 100%;
+    background: var(--primary); color: #fff; transition: opacity .15s, transform .1s;
+  }
+  .btn:hover { opacity: .92; }
+  .btn:active { transform: scale(0.99); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.accent { background: var(--accent); }
+  .btn.ghost { background: transparent; color: var(--ink-soft); border: 1.5px solid var(--border); }
+  .actions { display: flex; gap: 8px; }
+  .actions .btn { flex: 1; }
+  .foot-note { text-align: center; font-size: 11.5px; color: var(--ink-soft); margin-top: 16px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hr-tag">HR Department</div>
+    <h1>Take a quick photo</h1>
+    <p class="sub" id="sub">This is attached to your Time In/Out log for your supervisor to see.</p>
+
+    <div class="cam-frame" id="camFrame">
+      <video id="video" autoplay playsinline muted></video>
+      <div class="cam-status" id="status" style="display:none;"></div>
+    </div>
+    <canvas id="canvas" style="display:none;"></canvas>
+
+    <div class="actions" id="actionsLive">
+      <button class="btn ghost" id="btnCancel">Cancel</button>
+      <button class="btn accent" id="btnCapture">Capture</button>
+    </div>
+    <div class="actions" id="actionsError" style="display:none;">
+      <button class="btn ghost" id="btnCancel2">Cancel</button>
+      <button class="btn accent" id="btnRetry">Try Again</button>
+    </div>
+
+    <div class="foot-note">This window will close automatically once your photo is taken.</div>
+  </div>
+
+<script>
+  var params = new URLSearchParams(window.location.search);
+  var returnOrigin = params.get('returnOrigin') || '*';
+  var stream = null;
+
+  function send(photoDataUrl) {
+    stopStream();
+    if (window.opener) {
+      try {
+        window.opener.postMessage({ source: 'dtr-camera', photo: photoDataUrl || null }, returnOrigin);
+      } catch (e) { /* ignore — window will still close */ }
+    }
+    window.close();
+  }
+
+  function stopStream() {
+    if (stream) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      stream = null;
+    }
+  }
+
+  function showError(msg) {
+    document.getElementById('video').style.display = 'none';
+    var status = document.getElementById('status');
+    status.style.display = 'block';
+    status.textContent = msg;
+    document.getElementById('actionsLive').style.display = 'none';
+    document.getElementById('actionsError').style.display = 'flex';
+  }
+
+  function startCamera() {
+    stopStream();
+    document.getElementById('video').style.display = '';
+    document.getElementById('status').style.display = 'none';
+    document.getElementById('actionsLive').style.display = 'flex';
+    document.getElementById('actionsError').style.display = 'none';
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError('Camera is not supported in this browser.');
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false }).then(function (s) {
+      stream = s;
+      document.getElementById('video').srcObject = s;
+    }).catch(function () {
+      showError('Camera access was blocked. Please allow the camera permission for this page and try again.');
+    });
+  }
+
+  function capture() {
+    var video = document.getElementById('video');
+    var canvas = document.getElementById('canvas');
+    var w = 480;
+    var ratio = (video.videoWidth && video.videoHeight) ? (video.videoHeight / video.videoWidth) : 0.75;
+    var h = Math.round(w * ratio);
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+    var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    send(dataUrl);
+  }
+
+  document.getElementById('btnCapture').addEventListener('click', capture);
+  document.getElementById('btnCancel').addEventListener('click', function () { send(null); });
+  document.getElementById('btnCancel2').addEventListener('click', function () { send(null); });
+  document.getElementById('btnRetry').addEventListener('click', startCamera);
+  window.addEventListener('beforeunload', stopStream);
+  window.addEventListener('pagehide', stopStream);
+
+  startCamera();
+</script>
+</body>
+</html>
